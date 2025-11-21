@@ -295,7 +295,7 @@
       const now = performance.now();
       const isSingle = activePointers.size === 0 && !hadMultiTouch;
       const duration = info ? now - info.downTs : Infinity;
-      if (isSingle && info && duration < 500 && previewGroup && hitPreview(e)) {
+      if (isSingle && previewGroup && hitPreview(e)) {
         window.location.href = 'http://www.infocus1.co.kr';
       }
       if (activePointers.size === 0) hadMultiTouch = false;

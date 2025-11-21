@@ -155,22 +155,16 @@
 <body>
   <div id="ui">
     <div class="panel">
-      <div class="brand"><span class="dot"></span> Image AR · WebXR hit-test</div>
+      <div class="brand"><span class="dot"></span> Image AR · WebXR</div>
       <h1>site_preview.png을 공간에 띄우기</h1>
-      <p class="lead">페이지를 열면 바로 카메라가 켜집니다. 바닥/테이블을 비추다 링이 보이면 탭해서 1000x545 이미지를 배치하세요.</p>
+      <p class="lead">페이지가 열리면 곧바로 카메라가 켜집니다. 손가락 두 개로 크기 조절, 한 손가락으로 끌어다 위치를 옮기세요.</p>
       <div class="chips">
         <span class="chip accent">site_preview.png · 1000×545</span>
-        <span class="chip">Three.js · WebXR</span>
-        <span class="chip">Double-sided plane render</span>
+        <span class="chip">Pinch to scale</span>
+        <span class="chip">Drag to move</span>
       </div>
-      <div id="cta"></div>
-      <div id="status">지원 여부를 확인하는 중...</div>
+      <div id="status">AR 준비 중...</div>
       <div id="unsupported" class="unsupported"></div>
-    </div>
-    <div class="tips">
-      <div class="tip"><strong>1)</strong> Android 크롬 + HTTPS에서 WebXR AR 모드를 지원합니다.</div>
-      <div class="tip"><strong>2)</strong> 카메라 허용 후 바닥을 천천히 스캔하면 링이 나타납니다.</div>
-      <div class="tip"><strong>3)</strong> 탭으로 배치한 뒤 다시 탭하면 위치를 옮길 수 있습니다.</div>
     </div>
   </div>
 
@@ -178,20 +172,22 @@
     import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 
     let camera, scene, renderer;
-    let reticle, controller;
-    let hitTestSource = null;
-    let hitTestSourceRequested = false;
-    let viewerSpace = null;
     let previewMesh = null;
     let xrSession = null;
     let hasPlacedOnce = false;
 
-    const reticleTargetPos = new THREE.Vector3();
-    const reticleTargetQuat = new THREE.Quaternion();
+    const up = new THREE.Vector3(0, 1, 0);
+    const lookMat = new THREE.Matrix4();
+    const initialDepth = 1.0; // meters in front of camera
+    const previewScale = { base: 0.9, current: 0.9 }; // meters for width
+
+    const activePointers = new Map();
+    const tmpVec = new THREE.Vector3();
+    const tmpVec2 = new THREE.Vector3();
+    const tmpQuat = new THREE.Quaternion();
 
     const statusEl = document.getElementById('status');
     const unsupportedEl = document.getElementById('unsupported');
-    const ctaEl = document.getElementById('cta');
 
     const setStatus = (msg) => { statusEl.textContent = msg; };
     const showUnsupported = (msg) => {
@@ -218,7 +214,7 @@
       // Load the preview image as a textured plane
       new THREE.TextureLoader().load('./site_preview.png', (texture) => {
         const aspect = texture.image.width / texture.image.height;
-        const widthMeters = 1.0;
+        const widthMeters = previewScale.base;
         const heightMeters = widthMeters / aspect;
         const material = new THREE.MeshBasicMaterial({
           map: texture,
@@ -231,19 +227,6 @@
         scene.add(previewMesh);
       });
 
-      // Reticle to show where we can place the image
-      reticle = new THREE.Mesh(
-        new THREE.RingGeometry(0.10, 0.13, 40).rotateX(-Math.PI / 2),
-        new THREE.MeshBasicMaterial({ color: 0xff375f, side: THREE.DoubleSide })
-      );
-      reticle.matrixAutoUpdate = true;
-      reticle.visible = false;
-      scene.add(reticle);
-
-      controller = renderer.xr.getController(0);
-      controller.addEventListener('select', onSelect);
-      scene.add(controller);
-
       checkAndStart();
       window.addEventListener('resize', onWindowResize);
       animate();
@@ -251,7 +234,6 @@
 
     async function checkAndStart() {
       if (!navigator.xr || !(await navigator.xr.isSessionSupported('immersive-ar'))) {
-        ctaEl.style.display = 'none';
         showUnsupported('이 브라우저는 WebXR AR을 지원하지 않습니다. Android 크롬 최신 버전·HTTPS에서 열어주세요.');
         return;
       }
@@ -267,21 +249,27 @@
 
     async function startARSession() {
       if (xrSession) return xrSession;
-      const session = await navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['hit-test'] });
+      const session = await navigator.xr.requestSession('immersive-ar', {
+        requiredFeatures: ['local'],
+        optionalFeatures: ['local-floor', 'dom-overlay'],
+        domOverlay: { root: document.body }
+      });
       xrSession = session;
       session.addEventListener('end', onSessionEnd);
       renderer.xr.setReferenceSpaceType('local');
       await renderer.xr.setSession(session);
-      resetHitTest();
       hasPlacedOnce = false;
-      setStatus('카메라를 허용하고 바닥/테이블을 천천히 비추세요. 링이 나타나면 탭!');
+      attachGestures();
+      if (previewMesh) {
+        placeFront(initialDepth);
+        previewMesh.scale.setScalar(previewScale.current / previewScale.base);
+      }
+      setStatus('핀치로 크기 조정, 드래그로 이동하세요.');
       return session;
     }
 
     function onSessionEnd() {
       xrSession = null;
-      resetHitTest();
-      reticle.visible = false;
       if (previewMesh) previewMesh.visible = false;
       setStatus('세션이 종료되었습니다. 화면을 탭하면 다시 시작합니다.');
       waitForUserTap();
@@ -301,27 +289,14 @@
       window.addEventListener('click', tapHandler, { once: true });
     }
 
-    function onSelect() {
-      placePreview();
-    }
-
-    const up = new THREE.Vector3(0, 1, 0);
-    const lookMat = new THREE.Matrix4();
-
-    function placePreview() {
-      if (!reticle.visible || !previewMesh) return;
-      previewMesh.position.copy(reticleTargetPos);
-      lookMat.lookAt(previewMesh.position, camera.position, up);
-      previewMesh.quaternion.setFromRotationMatrix(lookMat);
+    function placeFront(distance) {
+      if (!previewMesh) return;
+      tmpVec.set(0, 0, -distance).applyQuaternion(camera.quaternion).add(camera.position);
+      previewMesh.position.copy(tmpVec);
+      previewMesh.quaternion.copy(camera.quaternion);
+      previewMesh.rotateY(Math.PI);
       previewMesh.visible = true;
       hasPlacedOnce = true;
-      setStatus('배치 완료! 다시 탭하면 위치를 옮길 수 있습니다.');
-    }
-
-    function resetHitTest() {
-      hitTestSourceRequested = false;
-      hitTestSource = null;
-      viewerSpace = null;
     }
 
     function onWindowResize() {
@@ -334,53 +309,84 @@
       renderer.setAnimationLoop(render);
     }
 
-    const tmpMat = new THREE.Matrix4();
-
-    function render(_time, frame) {
-      const session = renderer.xr.getSession();
-      if (frame && session) {
-        if (!hitTestSourceRequested) {
-          session.requestReferenceSpace('viewer').then((space) => {
-            viewerSpace = space;
-            session.requestHitTestSource({ space: viewerSpace }).then((source) => {
-              hitTestSource = source;
-            }).catch(() => {
-              showUnsupported('히트 테스트를 초기화할 수 없습니다. WebXR 지원 여부를 확인하세요.');
-            });
-          }).catch(() => {
-            showUnsupported('참조 공간을 얻을 수 없습니다. WebXR 권한을 확인하세요.');
-          });
-          session.addEventListener('end', resetHitTest);
-          hitTestSourceRequested = true;
-        }
-
-        if (hitTestSource) {
-          const referenceSpace = renderer.xr.getReferenceSpace();
-          const hitTestResults = frame.getHitTestResults(hitTestSource);
-          if (hitTestResults.length) {
-            const hit = hitTestResults[0];
-            const pose = hit.getPose(referenceSpace);
-            reticle.visible = true;
-            tmpMat.fromArray(pose.transform.matrix);
-            reticleTargetPos.setFromMatrixPosition(tmpMat);
-            reticleTargetQuat.setFromRotationMatrix(tmpMat);
-            if (!hasPlacedOnce && previewMesh) {
-              placePreview();
-            }
-            setStatus('링이 놓일 곳을 탭해 이미지를 배치하세요.');
-          } else {
-            reticle.visible = false;
-          }
-        }
-      }
-
-      if (reticle.visible) {
-        reticle.position.lerp(reticleTargetPos, 0.25);
-        reticle.quaternion.slerp(reticleTargetQuat, 0.25);
-        reticle.updateMatrixWorld(true);
-      }
-
+    function render() {
       renderer.render(scene, camera);
+    }
+
+    function attachGestures() {
+      const el = renderer.domElement;
+      el.style.touchAction = 'none';
+
+      el.addEventListener('pointerdown', onPointerDown);
+      el.addEventListener('pointermove', onPointerMove);
+      el.addEventListener('pointerup', onPointerUp);
+      el.addEventListener('pointercancel', onPointerUp);
+      el.addEventListener('pointerout', onPointerUp);
+      el.addEventListener('pointerleave', onPointerUp);
+    }
+
+    function onPointerDown(e) {
+      activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (!xrSession) return;
+      if (activePointers.size === 1 && previewMesh) {
+        placeFront(initialDepth);
+      }
+    }
+
+    function onPointerUp(e) {
+      activePointers.delete(e.pointerId);
+    }
+
+    function onPointerMove(e) {
+      if (!previewMesh || activePointers.size === 0) return;
+      if (!activePointers.has(e.pointerId)) return;
+
+      activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const points = Array.from(activePointers.values());
+
+      if (points.length === 1) {
+        // drag: move along the camera-facing plane keeping current distance
+        const distance = previewMesh.position.distanceTo(camera.position) || initialDepth;
+        const { x, y } = points[0];
+        updatePositionFromScreen(x, y, distance);
+      } else if (points.length >= 2) {
+        // pinch: scale based on first two pointers
+        const [p1, p2] = points;
+        if (!onPointerMove.startDist) {
+          onPointerMove.startDist = dist(p1, p2);
+          onPointerMove.startScale = previewScale.current;
+        }
+        const factor = dist(p1, p2) / onPointerMove.startDist;
+        previewScale.current = clamp(onPointerMove.startScale * factor, 0.3, 2.5);
+        previewMesh.scale.setScalar(previewScale.current / previewScale.base);
+      }
+    }
+
+    function dist(a, b) {
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function clamp(val, min, max) {
+      return Math.min(max, Math.max(min, val));
+    }
+
+    function updatePositionFromScreen(clientX, clientY, distance) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
+      const ndcY = -(((clientY - rect.top) / rect.height) * 2 - 1);
+      tmpVec.set(ndcX, ndcY, 0.5);
+      tmpVec.unproject(camera);
+      tmpVec.sub(camera.position).normalize();
+      tmpVec.multiplyScalar(distance);
+      previewMesh.position.copy(camera.position).add(tmpVec);
+
+      // keep facing the camera
+      tmpQuat.setFromRotationMatrix(lookMat.lookAt(previewMesh.position, camera.position, up));
+      previewMesh.quaternion.copy(tmpQuat);
+      previewMesh.rotateY(Math.PI);
+      hasPlacedOnce = true;
     }
   </script>
 </body>

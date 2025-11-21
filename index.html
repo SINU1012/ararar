@@ -116,12 +116,6 @@
     }
     #ar-btn:hover { transform: translateY(-1px); box-shadow: 0 16px 34px rgba(255, 45, 85, 0.5); }
     #ar-btn:active { transform: translateY(0); box-shadow: 0 12px 30px rgba(255, 45, 85, 0.35); }
-    #status {
-      margin-top: 6px;
-      font-size: 14px;
-      color: var(--text);
-    }
-    #status small { color: var(--muted); display: block; margin-top: 2px; }
     .tips {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -163,7 +157,6 @@
         <span class="chip">Pinch to scale</span>
         <span class="chip">Drag to move</span>
       </div>
-      <div id="status">AR 준비 중...</div>
       <div id="unsupported" class="unsupported"></div>
     </div>
   </div>
@@ -186,10 +179,8 @@
     const tmpVec2 = new THREE.Vector3();
     const tmpQuat = new THREE.Quaternion();
 
-    const statusEl = document.getElementById('status');
     const unsupportedEl = document.getElementById('unsupported');
 
-    const setStatus = (msg) => { statusEl.textContent = msg; };
     const showUnsupported = (msg) => {
       unsupportedEl.textContent = msg;
       unsupportedEl.classList.add('show');
@@ -237,12 +228,10 @@
         showUnsupported('이 브라우저는 WebXR AR을 지원하지 않습니다. Android 크롬 최신 버전·HTTPS에서 열어주세요.');
         return;
       }
-      setStatus('AR 세션을 시작합니다...');
       try {
         await startARSession();
       } catch (err) {
         console.warn('Auto-start blocked, waiting for tap', err);
-        setStatus('화면을 한번 탭하면 AR이 시작됩니다.');
         waitForUserTap();
       }
     }
@@ -264,14 +253,12 @@
         placeFront(initialDepth);
         previewMesh.scale.setScalar(previewScale.current / previewScale.base);
       }
-      setStatus('핀치로 크기 조정, 드래그로 이동하세요.');
       return session;
     }
 
     function onSessionEnd() {
       xrSession = null;
       if (previewMesh) previewMesh.visible = false;
-      setStatus('세션이 종료되었습니다. 화면을 탭하면 다시 시작합니다.');
       waitForUserTap();
     }
 
@@ -281,7 +268,6 @@
         window.removeEventListener('click', tapHandler);
         startARSession().catch((err) => {
           console.error(err);
-          setStatus('AR 시작이 차단되었습니다. 한 번 더 탭해주세요.');
           waitForUserTap();
         });
       };
@@ -335,6 +321,8 @@
 
     function onPointerUp(e) {
       activePointers.delete(e.pointerId);
+      onPointerMove.startDist = undefined;
+      onPointerMove.startScale = undefined;
     }
 
     function onPointerMove(e) {

@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <title>Site Preview AR Overlay</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: radial-gradient(circle at 15% 20%, rgba(255, 71, 87, 0.18), transparent 32%),
+             radial-gradient(circle at 80% 10%, rgba(0, 255, 235, 0.14), transparent 28%),
+             #05070d;
+      --panel: rgba(12, 14, 22, 0.78);
+      --border: rgba(255, 255, 255, 0.12);
+      --text: #eef1f7;
+      --muted: #a7b0c4;
+      --accent: #ff2d55;
+      --accent-2: #38f8d6;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Space Grotesk", "Helvetica Neue", sans-serif;
+    }
+    #ui {
+      position: fixed;
+      top: 18px;
+      left: 18px;
+      right: 18px;
+      z-index: 5;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px 16px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 18px 45px rgba(0, 0, 0, 0.35);
+      pointer-events: auto;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), #ff8a00);
+      box-shadow: 0 0 10px rgba(255, 45, 85, 0.9);
+    }
+    h1 {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    p.lead {
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.5;
+      margin-top: 6px;
+    }
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .chip {
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 13px;
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .chip.accent {
+      color: var(--text);
+      border-color: rgba(255, 45, 85, 0.4);
+      background: rgba(255, 45, 85, 0.14);
+    }
+    #cta {
+      margin-top: 12px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    #ar-btn {
+      appearance: none;
+      border: 1px solid rgba(255, 45, 85, 0.55);
+      background: linear-gradient(135deg, #ff2d55, #f767ac);
+      color: #0b0b12;
+      font-weight: 700;
+      font-size: 15px;
+      border-radius: 12px;
+      padding: 12px 18px;
+      cursor: pointer;
+      box-shadow: 0 12px 30px rgba(255, 45, 85, 0.4);
+      transition: transform 0.18s ease, box-shadow 0.18s ease;
+      pointer-events: auto;
+    }
+    #ar-btn:hover { transform: translateY(-1px); box-shadow: 0 16px 34px rgba(255, 45, 85, 0.5); }
+    #ar-btn:active { transform: translateY(0); box-shadow: 0 12px 30px rgba(255, 45, 85, 0.35); }
+    #status {
+      margin-top: 6px;
+      font-size: 14px;
+      color: var(--text);
+    }
+    #status small { color: var(--muted); display: block; margin-top: 2px; }
+    .tips {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .tip {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .tip strong { color: var(--text); }
+    .unsupported {
+      display: none;
+      margin-top: 10px;
+      background: rgba(255, 119, 0, 0.18);
+      border: 1px solid rgba(255, 119, 0, 0.5);
+      color: #ffd7b3;
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 14px;
+    }
+    .unsupported.show { display: block; }
+    #unsupported a { color: #ffd7b3; text-decoration: underline; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <div class="panel">
+      <div class="brand"><span class="dot"></span> Image AR · WebXR hit-test</div>
+      <h1>site_preview.png을 공간에 띄우기</h1>
+      <p class="lead">AR 버튼을 누르고 바닥/테이블을 비춘 뒤 링이 나타나면 탭하세요. 1000x545 이미지를 실제 공간에 투영합니다.</p>
+      <div class="chips">
+        <span class="chip accent">site_preview.png · 1000×545</span>
+        <span class="chip">Three.js · WebXR</span>
+        <span class="chip">Double-sided plane render</span>
+      </div>
+      <div id="cta"></div>
+      <div id="status">지원 여부를 확인하는 중...</div>
+      <div id="unsupported" class="unsupported"></div>
+    </div>
+    <div class="tips">
+      <div class="tip"><strong>1)</strong> Android 크롬 + HTTPS에서 WebXR AR 모드를 지원합니다.</div>
+      <div class="tip"><strong>2)</strong> 카메라 허용 후 바닥을 천천히 스캔하면 링이 나타납니다.</div>
+      <div class="tip"><strong>3)</strong> 탭으로 배치한 뒤 다시 탭하면 위치를 옮길 수 있습니다.</div>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+    import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/webxr/ARButton.js';
+
+    let camera, scene, renderer;
+    let reticle, controller;
+    let hitTestSource = null;
+    let hitTestSourceRequested = false;
+    let viewerSpace = null;
+    let previewMesh = null;
+
+    const statusEl = document.getElementById('status');
+    const unsupportedEl = document.getElementById('unsupported');
+    const ctaEl = document.getElementById('cta');
+
+    const setStatus = (msg) => { statusEl.textContent = msg; };
+    const showUnsupported = (msg) => {
+      unsupportedEl.textContent = msg;
+      unsupportedEl.classList.add('show');
+    };
+
+    init();
+
+    function init() {
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.xr.enabled = true;
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      document.body.appendChild(renderer.domElement);
+
+      const hemi = new THREE.HemisphereLight(0xffffff, 0x222233, 1.1);
+      scene.add(hemi);
+
+      // Load the preview image as a textured plane
+      new THREE.TextureLoader().load('./site_preview.png', (texture) => {
+        const aspect = texture.image.width / texture.image.height;
+        const widthMeters = 1.2;
+        const heightMeters = widthMeters / aspect;
+        const material = new THREE.MeshBasicMaterial({
+          map: texture,
+          side: THREE.DoubleSide,
+          transparent: true
+        });
+        const geometry = new THREE.PlaneGeometry(widthMeters, heightMeters);
+        previewMesh = new THREE.Mesh(geometry, material);
+        previewMesh.visible = false;
+        scene.add(previewMesh);
+      });
+
+      // Reticle to show where we can place the image
+      reticle = new THREE.Mesh(
+        new THREE.RingGeometry(0.10, 0.13, 40).rotateX(-Math.PI / 2),
+        new THREE.MeshBasicMaterial({ color: 0xff375f, side: THREE.DoubleSide })
+      );
+      reticle.matrixAutoUpdate = false;
+      reticle.visible = false;
+      scene.add(reticle);
+
+      controller = renderer.xr.getController(0);
+      controller.addEventListener('select', onSelect);
+      scene.add(controller);
+
+      const arButton = ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] });
+      if (arButton.nodeName === 'BUTTON') {
+        arButton.id = 'ar-btn';
+        arButton.textContent = 'AR 시작';
+        ctaEl.appendChild(arButton);
+        setStatus('AR 시작을 눌러 바닥/테이블을 인식하세요.');
+      } else {
+        // AR not supported in this browser
+        ctaEl.style.display = 'none';
+        unsupportedEl.appendChild(arButton);
+        showUnsupported('이 브라우저는 WebXR AR을 지원하지 않습니다. Android 크롬 최신 버전·HTTPS에서 열어주세요.');
+        return;
+      }
+
+      renderer.xr.addEventListener('sessionstart', () => {
+        resetHitTest();
+        setStatus('카메라를 허용하고 바닥/테이블을 천천히 비추세요. 링이 나타나면 탭!');
+      });
+
+      renderer.xr.addEventListener('sessionend', () => {
+        setStatus('세션이 종료되었습니다. 다시 AR 시작을 눌러주세요.');
+        resetHitTest();
+        reticle.visible = false;
+        if (previewMesh) previewMesh.visible = false;
+      });
+
+      window.addEventListener('resize', onWindowResize);
+      animate();
+    }
+
+    function onSelect() {
+      if (reticle.visible && previewMesh) {
+        previewMesh.position.setFromMatrixPosition(reticle.matrix);
+        previewMesh.quaternion.setFromRotationMatrix(reticle.matrix);
+        previewMesh.visible = true;
+        setStatus('배치 완료! 다시 탭하면 위치를 옮길 수 있습니다.');
+      }
+    }
+
+    function resetHitTest() {
+      hitTestSourceRequested = false;
+      hitTestSource = null;
+      viewerSpace = null;
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function animate() {
+      renderer.setAnimationLoop(render);
+    }
+
+    function render(_time, frame) {
+      const session = renderer.xr.getSession();
+      if (frame && session) {
+        if (!hitTestSourceRequested) {
+          session.requestReferenceSpace('viewer').then((space) => {
+            viewerSpace = space;
+            session.requestHitTestSource({ space: viewerSpace }).then((source) => {
+              hitTestSource = source;
+            }).catch(() => {
+              showUnsupported('히트 테스트를 초기화할 수 없습니다. WebXR 지원 여부를 확인하세요.');
+            });
+          }).catch(() => {
+            showUnsupported('참조 공간을 얻을 수 없습니다. WebXR 권한을 확인하세요.');
+          });
+          session.addEventListener('end', resetHitTest);
+          hitTestSourceRequested = true;
+        }
+
+        if (hitTestSource) {
+          const referenceSpace = renderer.xr.getReferenceSpace();
+          const hitTestResults = frame.getHitTestResults(hitTestSource);
+          if (hitTestResults.length) {
+            const hit = hitTestResults[0];
+            const pose = hit.getPose(referenceSpace);
+            reticle.visible = true;
+            reticle.matrix.fromArray(pose.transform.matrix);
+            setStatus('링이 놓일 곳을 탭해 이미지를 배치하세요.');
+          } else {
+            reticle.visible = false;
+          }
+        }
+      }
+
+      renderer.render(scene, camera);
+    }
+  </script>
+</body>
+</html>

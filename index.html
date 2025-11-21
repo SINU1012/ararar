@@ -24,8 +24,8 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background: var(--bg);
-      color: var(--text);
+      background: #ffffff;
+      color: #0b0b12;
       font-family: "Space Grotesk", "Helvetica Neue", sans-serif;
     }
     #ui {
@@ -39,66 +39,18 @@
       flex-direction: column;
       gap: 10px;
     }
-    .panel {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 14px 16px;
-      backdrop-filter: blur(12px);
-      box-shadow: 0 18px 45px rgba(0, 0, 0, 0.35);
-      pointer-events: auto;
-    }
-    .brand {
+    #gate {
+      position: fixed;
+      inset: 0;
+      background: #ffffff;
       display: flex;
       align-items: center;
-      gap: 8px;
-      color: var(--muted);
-      font-size: 13px;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-    }
-    .dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, var(--accent), #ff8a00);
-      box-shadow: 0 0 10px rgba(255, 45, 85, 0.9);
-    }
-    h1 {
-      font-size: 20px;
-      font-weight: 700;
-      letter-spacing: -0.01em;
-    }
-    p.lead {
-      color: var(--muted);
-      font-size: 15px;
-      line-height: 1.5;
-      margin-top: 6px;
-    }
-    .chips {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 10px;
-    }
-    .chip {
-      padding: 8px 12px;
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      color: var(--muted);
-      font-size: 13px;
-      background: rgba(255, 255, 255, 0.03);
-    }
-    .chip.accent {
-      color: var(--text);
-      border-color: rgba(255, 45, 85, 0.4);
-      background: rgba(255, 45, 85, 0.14);
-    }
-    #cta {
-      margin-top: 12px;
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
+      justify-content: center;
+      flex-direction: column;
+      gap: 12px;
+      z-index: 10;
+      text-align: center;
+      padding: 24px;
     }
     #ar-btn {
       appearance: none;
@@ -116,21 +68,18 @@
     }
     #ar-btn:hover { transform: translateY(-1px); box-shadow: 0 16px 34px rgba(255, 45, 85, 0.5); }
     #ar-btn:active { transform: translateY(0); box-shadow: 0 12px 30px rgba(255, 45, 85, 0.35); }
-    .tips {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 10px;
-      margin-top: 10px;
+    #gate h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
     }
-    .tip {
-      background: rgba(255, 255, 255, 0.02);
-      border: 1px dashed var(--border);
-      border-radius: 12px;
-      padding: 10px 12px;
-      font-size: 13px;
-      color: var(--muted);
+    #gate p {
+      margin: 0;
+      color: #6b7280;
+      font-size: 14px;
+      line-height: 1.6;
     }
-    .tip strong { color: var(--text); }
     .unsupported {
       display: none;
       margin-top: 10px;
@@ -147,18 +96,11 @@
   </style>
 </head>
 <body>
-  <div id="ui">
-    <div class="panel">
-      <div class="brand"><span class="dot"></span> Image AR · WebXR</div>
-      <h1>site_preview.png을 공간에 띄우기</h1>
-      <p class="lead">페이지가 열리면 곧바로 카메라가 켜집니다. 손가락 두 개로 크기 조절, 한 손가락으로 끌어다 위치를 옮기세요.</p>
-      <div class="chips">
-        <span class="chip accent">site_preview.png · 1000×545</span>
-        <span class="chip">Pinch to scale</span>
-        <span class="chip">Drag to move</span>
-      </div>
-      <div id="unsupported" class="unsupported"></div>
-    </div>
+  <div id="gate">
+    <h1>버튼을 누르시면 AR 콘텐츠가 시작됩니다.</h1>
+    <p>카메라 권한 필요 · 두 손가락 핀치로 크기 조정, 한 손가락 드래그로 이동</p>
+    <button id="ar-btn">AR 시작</button>
+    <div id="unsupported" class="unsupported"></div>
   </div>
 
   <script type="module">
@@ -179,12 +121,21 @@
     const tmpVec2 = new THREE.Vector3();
     const tmpQuat = new THREE.Quaternion();
 
+    const gateEl = document.getElementById('gate');
+    const startBtn = document.getElementById('ar-btn');
     const unsupportedEl = document.getElementById('unsupported');
 
     const showUnsupported = (msg) => {
       unsupportedEl.textContent = msg;
       unsupportedEl.classList.add('show');
     };
+
+    startBtn.addEventListener('click', () => {
+      startARSession().catch((err) => {
+        console.error(err);
+        waitForUserTap();
+      });
+    });
 
     init();
 
@@ -218,22 +169,9 @@
         scene.add(previewMesh);
       });
 
-      checkAndStart();
+      // Wait for explicit button tap to start
       window.addEventListener('resize', onWindowResize);
       animate();
-    }
-
-    async function checkAndStart() {
-      if (!navigator.xr || !(await navigator.xr.isSessionSupported('immersive-ar'))) {
-        showUnsupported('이 브라우저는 WebXR AR을 지원하지 않습니다. Android 크롬 최신 버전·HTTPS에서 열어주세요.');
-        return;
-      }
-      try {
-        await startARSession();
-      } catch (err) {
-        console.warn('Auto-start blocked, waiting for tap', err);
-        waitForUserTap();
-      }
     }
 
     async function startARSession() {
@@ -249,6 +187,7 @@
       await renderer.xr.setSession(session);
       hasPlacedOnce = false;
       attachGestures();
+      gateEl.style.display = 'none';
       if (previewMesh) {
         placeFront(initialDepth);
         previewMesh.scale.setScalar(previewScale.current / previewScale.base);
@@ -259,7 +198,7 @@
     function onSessionEnd() {
       xrSession = null;
       if (previewMesh) previewMesh.visible = false;
-      waitForUserTap();
+      gateEl.style.display = 'flex';
     }
 
     function waitForUserTap() {
@@ -313,6 +252,12 @@
 
     function onPointerDown(e) {
       activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (previewMesh && activePointers.size === 1) {
+        if (hitPreview(e)) {
+          window.open('https://www.infocus1.co.kr', '_blank');
+          return;
+        }
+      }
       if (!xrSession) return;
       if (activePointers.size === 1 && previewMesh) {
         placeFront(initialDepth);
@@ -375,6 +320,17 @@
       previewMesh.quaternion.copy(tmpQuat);
       previewMesh.rotateY(Math.PI);
       hasPlacedOnce = true;
+    }
+
+    const raycaster = new THREE.Raycaster();
+    const pointerNDC = new THREE.Vector2();
+    function hitPreview(e) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointerNDC.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      pointerNDC.y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
+      raycaster.setFromCamera(pointerNDC, camera);
+      const hit = raycaster.intersectObject(previewMesh, true);
+      return hit.length > 0;
     }
   </script>
 </body>

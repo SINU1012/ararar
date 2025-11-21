@@ -116,9 +116,10 @@
     const up = new THREE.Vector3(0, 1, 0);
     const lookMat = new THREE.Matrix4();
     const initialDepth = 1.0; // meters in front of camera
-    const previewScale = { base: 0.9, current: 0.9 }; // meters for width
+    const previewScale = { base: 0.75, current: 0.75 }; // meters for width
 
     const activePointers = new Map();
+    let hadMultiTouch = false;
     const tmpVec = new THREE.Vector3();
     const tmpVec2 = new THREE.Vector3();
     const tmpQuat = new THREE.Quaternion();
@@ -274,13 +275,14 @@
     }
 
     function onPointerDown(e) {
-      activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (previewMesh && activePointers.size === 1) {
-        if (hitPreview(e)) {
-          window.open('https://www.infocus1.co.kr', '_blank');
-          return;
-        }
-      }
+      activePointers.set(e.pointerId, {
+        x: e.clientX,
+        y: e.clientY,
+        startX: e.clientX,
+        startY: e.clientY,
+        downTs: performance.now()
+      });
+      if (activePointers.size >= 2) hadMultiTouch = true;
       if (!xrSession) return;
       if (activePointers.size === 1 && previewGroup) {
         placeFront(initialDepth);
@@ -288,7 +290,16 @@
     }
 
     function onPointerUp(e) {
+      const info = activePointers.get(e.pointerId);
       activePointers.delete(e.pointerId);
+      const now = performance.now();
+      const isSingle = activePointers.size === 0 && !hadMultiTouch;
+      const moved = info ? Math.hypot((info.x || e.clientX) - info.startX, (info.y || e.clientY) - info.startY) : 0;
+      const duration = info ? now - info.downTs : Infinity;
+      if (isSingle && info && duration < 500 && moved < 12 && previewMesh && hitPreview(e)) {
+        window.open('https://www.infocus1.co.kr', '_blank');
+      }
+      if (activePointers.size === 0) hadMultiTouch = false;
       onPointerMove.startDist = undefined;
       onPointerMove.startScale = undefined;
     }

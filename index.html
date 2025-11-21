@@ -297,7 +297,7 @@
       const moved = info ? Math.hypot((info.x || e.clientX) - info.startX, (info.y || e.clientY) - info.startY) : 0;
       const duration = info ? now - info.downTs : Infinity;
       if (isSingle && info && duration < 500 && moved < 12 && previewMesh && hitPreview(e)) {
-        window.open('https://www.infocus1.co.kr', '_blank');
+        window.open('http://www.infocus1.co.kr', '_blank');
       }
       if (activePointers.size === 0) hadMultiTouch = false;
       onPointerMove.startDist = undefined;

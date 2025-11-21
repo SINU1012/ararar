@@ -282,7 +282,8 @@
         y: e.clientY,
         startX: e.clientX,
         startY: e.clientY,
-        downTs: performance.now()
+        downTs: performance.now(),
+        movedTooFar: false
       });
       if (activePointers.size >= 2) hadMultiTouch = true;
       if (!xrSession) return;
@@ -297,8 +298,9 @@
       const now = performance.now();
       const isSingle = activePointers.size === 0 && !hadMultiTouch;
       const duration = info ? now - info.downTs : Infinity;
-      const moved = info ? Math.hypot((info.x || e.clientX) - info.startX, (info.y || e.clientY) - info.startY) : Infinity;
-      if (isSingle && duration < tapTimeMax && moved < tapMoveMax && previewGroup && hitPreview(e)) {
+      const moved = info ? Math.hypot((info.x ?? e.clientX) - info.startX, (info.y ?? e.clientY) - info.startY) : Infinity;
+      const cleanTap = isSingle && info && duration < tapTimeMax && moved < tapMoveMax && !info.movedTooFar;
+      if (cleanTap && previewGroup && hitPreview(e)) {
         window.location.href = 'http://www.infocus1.co.kr';
       }
       if (activePointers.size === 0) hadMultiTouch = false;
@@ -310,7 +312,12 @@
       if (!previewGroup || activePointers.size === 0) return;
       if (!activePointers.has(e.pointerId)) return;
 
-      activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const info = activePointers.get(e.pointerId);
+      info.x = e.clientX;
+      info.y = e.clientY;
+      const movedFromStart = Math.hypot(info.x - info.startX, info.y - info.startY);
+      if (movedFromStart > tapMoveMax) info.movedTooFar = true;
+      activePointers.set(e.pointerId, info);
       const points = Array.from(activePointers.values());
 
       if (points.length === 1) {

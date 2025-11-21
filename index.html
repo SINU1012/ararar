@@ -157,7 +157,7 @@
     <div class="panel">
       <div class="brand"><span class="dot"></span> Image AR · WebXR hit-test</div>
       <h1>site_preview.png을 공간에 띄우기</h1>
-      <p class="lead">AR 버튼을 누르고 바닥/테이블을 비춘 뒤 링이 나타나면 탭하세요. 1000x545 이미지를 실제 공간에 투영합니다.</p>
+      <p class="lead">페이지를 열면 바로 카메라가 켜집니다. 바닥/테이블을 비추다 링이 보이면 탭해서 1000x545 이미지를 배치하세요.</p>
       <div class="chips">
         <span class="chip accent">site_preview.png · 1000×545</span>
         <span class="chip">Three.js · WebXR</span>
@@ -176,7 +176,6 @@
 
   <script type="module">
     import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
-    import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/webxr/ARButton.js';
 
     let camera, scene, renderer;
     let reticle, controller;
@@ -184,6 +183,11 @@
     let hitTestSourceRequested = false;
     let viewerSpace = null;
     let previewMesh = null;
+    let xrSession = null;
+    let hasPlacedOnce = false;
+
+    const reticleTargetPos = new THREE.Vector3();
+    const reticleTargetQuat = new THREE.Quaternion();
 
     const statusEl = document.getElementById('status');
     const unsupportedEl = document.getElementById('unsupported');
@@ -214,7 +218,7 @@
       // Load the preview image as a textured plane
       new THREE.TextureLoader().load('./site_preview.png', (texture) => {
         const aspect = texture.image.width / texture.image.height;
-        const widthMeters = 1.2;
+        const widthMeters = 1.0;
         const heightMeters = widthMeters / aspect;
         const material = new THREE.MeshBasicMaterial({
           map: texture,
@@ -232,7 +236,7 @@
         new THREE.RingGeometry(0.10, 0.13, 40).rotateX(-Math.PI / 2),
         new THREE.MeshBasicMaterial({ color: 0xff375f, side: THREE.DoubleSide })
       );
-      reticle.matrixAutoUpdate = false;
+      reticle.matrixAutoUpdate = true;
       reticle.visible = false;
       scene.add(reticle);
 
@@ -240,43 +244,78 @@
       controller.addEventListener('select', onSelect);
       scene.add(controller);
 
-      const arButton = ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] });
-      if (arButton.nodeName === 'BUTTON') {
-        arButton.id = 'ar-btn';
-        arButton.textContent = 'AR 시작';
-        ctaEl.appendChild(arButton);
-        setStatus('AR 시작을 눌러 바닥/테이블을 인식하세요.');
-      } else {
-        // AR not supported in this browser
-        ctaEl.style.display = 'none';
-        unsupportedEl.appendChild(arButton);
-        showUnsupported('이 브라우저는 WebXR AR을 지원하지 않습니다. Android 크롬 최신 버전·HTTPS에서 열어주세요.');
-        return;
-      }
-
-      renderer.xr.addEventListener('sessionstart', () => {
-        resetHitTest();
-        setStatus('카메라를 허용하고 바닥/테이블을 천천히 비추세요. 링이 나타나면 탭!');
-      });
-
-      renderer.xr.addEventListener('sessionend', () => {
-        setStatus('세션이 종료되었습니다. 다시 AR 시작을 눌러주세요.');
-        resetHitTest();
-        reticle.visible = false;
-        if (previewMesh) previewMesh.visible = false;
-      });
-
+      checkAndStart();
       window.addEventListener('resize', onWindowResize);
       animate();
     }
 
-    function onSelect() {
-      if (reticle.visible && previewMesh) {
-        previewMesh.position.setFromMatrixPosition(reticle.matrix);
-        previewMesh.quaternion.setFromRotationMatrix(reticle.matrix);
-        previewMesh.visible = true;
-        setStatus('배치 완료! 다시 탭하면 위치를 옮길 수 있습니다.');
+    async function checkAndStart() {
+      if (!navigator.xr || !(await navigator.xr.isSessionSupported('immersive-ar'))) {
+        ctaEl.style.display = 'none';
+        showUnsupported('이 브라우저는 WebXR AR을 지원하지 않습니다. Android 크롬 최신 버전·HTTPS에서 열어주세요.');
+        return;
       }
+      setStatus('AR 세션을 시작합니다...');
+      try {
+        await startARSession();
+      } catch (err) {
+        console.warn('Auto-start blocked, waiting for tap', err);
+        setStatus('화면을 한번 탭하면 AR이 시작됩니다.');
+        waitForUserTap();
+      }
+    }
+
+    async function startARSession() {
+      if (xrSession) return xrSession;
+      const session = await navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['hit-test'] });
+      xrSession = session;
+      session.addEventListener('end', onSessionEnd);
+      renderer.xr.setReferenceSpaceType('local');
+      await renderer.xr.setSession(session);
+      resetHitTest();
+      hasPlacedOnce = false;
+      setStatus('카메라를 허용하고 바닥/테이블을 천천히 비추세요. 링이 나타나면 탭!');
+      return session;
+    }
+
+    function onSessionEnd() {
+      xrSession = null;
+      resetHitTest();
+      reticle.visible = false;
+      if (previewMesh) previewMesh.visible = false;
+      setStatus('세션이 종료되었습니다. 화면을 탭하면 다시 시작합니다.');
+      waitForUserTap();
+    }
+
+    function waitForUserTap() {
+      const tapHandler = () => {
+        window.removeEventListener('touchend', tapHandler);
+        window.removeEventListener('click', tapHandler);
+        startARSession().catch((err) => {
+          console.error(err);
+          setStatus('AR 시작이 차단되었습니다. 한 번 더 탭해주세요.');
+          waitForUserTap();
+        });
+      };
+      window.addEventListener('touchend', tapHandler, { once: true });
+      window.addEventListener('click', tapHandler, { once: true });
+    }
+
+    function onSelect() {
+      placePreview();
+    }
+
+    const up = new THREE.Vector3(0, 1, 0);
+    const lookMat = new THREE.Matrix4();
+
+    function placePreview() {
+      if (!reticle.visible || !previewMesh) return;
+      previewMesh.position.copy(reticleTargetPos);
+      lookMat.lookAt(previewMesh.position, camera.position, up);
+      previewMesh.quaternion.setFromRotationMatrix(lookMat);
+      previewMesh.visible = true;
+      hasPlacedOnce = true;
+      setStatus('배치 완료! 다시 탭하면 위치를 옮길 수 있습니다.');
     }
 
     function resetHitTest() {
@@ -294,6 +333,8 @@
     function animate() {
       renderer.setAnimationLoop(render);
     }
+
+    const tmpMat = new THREE.Matrix4();
 
     function render(_time, frame) {
       const session = renderer.xr.getSession();
@@ -320,12 +361,23 @@
             const hit = hitTestResults[0];
             const pose = hit.getPose(referenceSpace);
             reticle.visible = true;
-            reticle.matrix.fromArray(pose.transform.matrix);
+            tmpMat.fromArray(pose.transform.matrix);
+            reticleTargetPos.setFromMatrixPosition(tmpMat);
+            reticleTargetQuat.setFromRotationMatrix(tmpMat);
+            if (!hasPlacedOnce && previewMesh) {
+              placePreview();
+            }
             setStatus('링이 놓일 곳을 탭해 이미지를 배치하세요.');
           } else {
             reticle.visible = false;
           }
         }
+      }
+
+      if (reticle.visible) {
+        reticle.position.lerp(reticleTargetPos, 0.25);
+        reticle.quaternion.slerp(reticleTargetQuat, 0.25);
+        reticle.updateMatrixWorld(true);
       }
 
       renderer.render(scene, camera);

@@ -80,6 +80,26 @@
       font-size: 14px;
       line-height: 1.6;
     }
+    #visit-btn {
+      position: fixed;
+      top: 0;
+      left: 0;
+      transform: translate(-50%, -50%);
+      padding: 10px 14px;
+      background: rgba(255, 255, 255, 0.9);
+      color: #0f172a;
+      border: 1px solid #d1d5db;
+      border-radius: 10px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+      font-weight: 600;
+      font-size: 14px;
+      display: none;
+      z-index: 9;
+      pointer-events: auto;
+      transition: transform 0.12s ease, box-shadow 0.12s ease;
+    }
+    #visit-btn:hover { box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1); transform: translate(-50%, -50%) translateY(-1px); }
+    #visit-btn:active { transform: translate(-50%, -50%) translateY(0); box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1); }
     .unsupported {
       display: none;
       margin-top: 10px;
@@ -102,6 +122,7 @@
     <button id="ar-btn">AR 시작</button>
     <div id="unsupported" class="unsupported"></div>
   </div>
+  <button id="visit-btn">사이트로 이동</button>
 
   <script type="module">
     import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
@@ -129,6 +150,7 @@
 
     const gateEl = document.getElementById('gate');
     const startBtn = document.getElementById('ar-btn');
+    const visitBtn = document.getElementById('visit-btn');
     const unsupportedEl = document.getElementById('unsupported');
 
     const showUnsupported = (msg) => {
@@ -261,7 +283,22 @@
         const scalePulse = 1 + 0.01 * Math.sin(t * 4.2);
         glowMesh.scale.setScalar(scalePulse);
       }
+      updateVisitButton();
       renderer.render(scene, camera);
+    }
+
+    const proj = new THREE.Vector3();
+    function updateVisitButton() {
+      if (!previewGroup || !previewGroup.visible) {
+        visitBtn.style.display = 'none';
+        return;
+      }
+      proj.copy(previewGroup.position).project(camera);
+      const rect = renderer.domElement.getBoundingClientRect();
+      const x = (proj.x * 0.5 + 0.5) * rect.width + rect.left;
+      const y = (-proj.y * 0.5 + 0.5) * rect.height + rect.top - 24;
+      visitBtn.style.display = 'inline-flex';
+      visitBtn.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px)`;
     }
 
     function attachGestures() {
@@ -301,7 +338,7 @@
       const moved = info ? Math.hypot((info.x ?? e.clientX) - info.startX, (info.y ?? e.clientY) - info.startY) : Infinity;
       const cleanTap = isSingle && info && duration < tapTimeMax && moved < tapMoveMax && !info.movedTooFar;
       if (cleanTap && previewGroup && hitPreview(e)) {
-        window.location.href = 'http://www.infocus1.co.kr';
+        visitBtn.click();
       }
       if (activePointers.size === 0) hadMultiTouch = false;
       onPointerMove.startDist = undefined;
@@ -377,6 +414,11 @@
       const hit = raycaster.intersectObject(target, true);
       return hit.length > 0;
     }
+
+    visitBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      window.location.href = 'http://www.infocus1.co.kr';
+    });
   </script>
 </body>
 </html>

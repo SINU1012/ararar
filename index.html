@@ -296,8 +296,8 @@
       const isSingle = activePointers.size === 0 && !hadMultiTouch;
       const moved = info ? Math.hypot((info.x || e.clientX) - info.startX, (info.y || e.clientY) - info.startY) : 0;
       const duration = info ? now - info.downTs : Infinity;
-      if (isSingle && info && duration < 500 && moved < 12 && previewMesh && hitPreview(e)) {
-        window.open('http://www.infocus1.co.kr', '_blank');
+      if (isSingle && info && duration < 500 && moved < 12 && previewGroup && hitPreview(e)) {
+        window.location.href = 'http://www.infocus1.co.kr';
       }
       if (activePointers.size === 0) hadMultiTouch = false;
       onPointerMove.startDist = undefined;
@@ -363,7 +363,9 @@
       pointerNDC.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       pointerNDC.y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
       raycaster.setFromCamera(pointerNDC, camera);
-      const hit = raycaster.intersectObject(previewMesh, true);
+      const target = previewGroup || previewMesh;
+      if (!target) return false;
+      const hit = raycaster.intersectObject(target, true);
       return hit.length > 0;
     }
   </script>

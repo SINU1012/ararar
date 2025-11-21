@@ -107,7 +107,9 @@
     import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 
     let camera, scene, renderer;
+    let previewGroup = null;
     let previewMesh = null;
+    let glowMesh = null;
     let xrSession = null;
     let hasPlacedOnce = false;
 
@@ -120,6 +122,7 @@
     const tmpVec = new THREE.Vector3();
     const tmpVec2 = new THREE.Vector3();
     const tmpQuat = new THREE.Quaternion();
+    const clock = new THREE.Clock();
 
     const gateEl = document.getElementById('gate');
     const startBtn = document.getElementById('ar-btn');
@@ -165,8 +168,22 @@
         });
         const geometry = new THREE.PlaneGeometry(widthMeters, heightMeters);
         previewMesh = new THREE.Mesh(geometry, material);
-        previewMesh.visible = false;
-        scene.add(previewMesh);
+
+        const glowMat = new THREE.MeshBasicMaterial({
+          color: 0x7cf2ff,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.18,
+          blending: THREE.AdditiveBlending
+        });
+        glowMesh = new THREE.Mesh(new THREE.PlaneGeometry(widthMeters * 1.06, heightMeters * 1.06), glowMat);
+        glowMesh.position.z = -0.0005;
+
+        previewGroup = new THREE.Group();
+        previewGroup.add(glowMesh);
+        previewGroup.add(previewMesh);
+        previewGroup.visible = false;
+        scene.add(previewGroup);
       });
 
       // Wait for explicit button tap to start
@@ -188,16 +205,16 @@
       hasPlacedOnce = false;
       attachGestures();
       gateEl.style.display = 'none';
-      if (previewMesh) {
+      if (previewGroup) {
         placeFront(initialDepth);
-        previewMesh.scale.setScalar(previewScale.current / previewScale.base);
+        previewGroup.scale.setScalar(previewScale.current / previewScale.base);
       }
       return session;
     }
 
     function onSessionEnd() {
       xrSession = null;
-      if (previewMesh) previewMesh.visible = false;
+      if (previewGroup) previewGroup.visible = false;
       gateEl.style.display = 'flex';
     }
 
@@ -215,12 +232,12 @@
     }
 
     function placeFront(distance) {
-      if (!previewMesh) return;
+      if (!previewGroup) return;
       tmpVec.set(0, 0, -distance).applyQuaternion(camera.quaternion).add(camera.position);
-      previewMesh.position.copy(tmpVec);
-      previewMesh.quaternion.copy(camera.quaternion);
-      previewMesh.rotateY(Math.PI);
-      previewMesh.visible = true;
+      previewGroup.position.copy(tmpVec);
+      previewGroup.quaternion.copy(camera.quaternion);
+      previewGroup.rotateY(Math.PI);
+      previewGroup.visible = true;
       hasPlacedOnce = true;
     }
 
@@ -235,6 +252,12 @@
     }
 
     function render() {
+      if (glowMesh && previewGroup && previewGroup.visible) {
+        const t = clock.getElapsedTime();
+        glowMesh.material.opacity = 0.12 + 0.06 * Math.sin(t * 2.4);
+        const scalePulse = 1 + 0.01 * Math.sin(t * 4.2);
+        glowMesh.scale.setScalar(scalePulse);
+      }
       renderer.render(scene, camera);
     }
 
@@ -259,7 +282,7 @@
         }
       }
       if (!xrSession) return;
-      if (activePointers.size === 1 && previewMesh) {
+      if (activePointers.size === 1 && previewGroup) {
         placeFront(initialDepth);
       }
     }
@@ -271,7 +294,7 @@
     }
 
     function onPointerMove(e) {
-      if (!previewMesh || activePointers.size === 0) return;
+      if (!previewGroup || activePointers.size === 0) return;
       if (!activePointers.has(e.pointerId)) return;
 
       activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -279,7 +302,7 @@
 
       if (points.length === 1) {
         // drag: move along the camera-facing plane keeping current distance
-        const distance = previewMesh.position.distanceTo(camera.position) || initialDepth;
+        const distance = previewGroup.position.distanceTo(camera.position) || initialDepth;
         const { x, y } = points[0];
         updatePositionFromScreen(x, y, distance);
       } else if (points.length >= 2) {
@@ -291,7 +314,7 @@
         }
         const factor = dist(p1, p2) / onPointerMove.startDist;
         previewScale.current = clamp(onPointerMove.startScale * factor, 0.3, 2.5);
-        previewMesh.scale.setScalar(previewScale.current / previewScale.base);
+        previewGroup.scale.setScalar(previewScale.current / previewScale.base);
       }
     }
 
@@ -313,12 +336,12 @@
       tmpVec.unproject(camera);
       tmpVec.sub(camera.position).normalize();
       tmpVec.multiplyScalar(distance);
-      previewMesh.position.copy(camera.position).add(tmpVec);
+      previewGroup.position.copy(camera.position).add(tmpVec);
 
       // keep facing the camera
-      tmpQuat.setFromRotationMatrix(lookMat.lookAt(previewMesh.position, camera.position, up));
-      previewMesh.quaternion.copy(tmpQuat);
-      previewMesh.rotateY(Math.PI);
+      tmpQuat.setFromRotationMatrix(lookMat.lookAt(previewGroup.position, camera.position, up));
+      previewGroup.quaternion.copy(tmpQuat);
+      previewGroup.rotateY(Math.PI);
       hasPlacedOnce = true;
     }
 
